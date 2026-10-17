@@ -23,7 +23,7 @@ float dt, playTime = 0;
 float clickTime, clickStartTime, clickEndTime;
 int isClicking = 0;
 float realG = 6.6743 * pow(10,-11);
-float G = 10000;
+float G = 50000;
 float accelerationVisualScale = 1.0;
 float circleSize = 30;
 unsigned char alpha = 177;
@@ -32,6 +32,7 @@ vector<Vector2> positions = {};
 vector<Vector2> velocities = {};
 vector<float> masses = {};
 vector<vector<Vector2>> accelerations = {};
+vector<vector<Vector2>> forces = {};
 vector<Color> colors = {};
 
 void mouseLeft(){
@@ -48,6 +49,7 @@ void mouseLeft(){
             masses.push_back(0.0);
             velocities.push_back({0,0});
             accelerations.push_back({});
+            forces.push_back({});
             colors.push_back({randNumR,randNumG,randNumB,alpha});
         }
         if(isClicking){
@@ -79,6 +81,7 @@ void mouseRight(){
             masses.push_back(circleSize);
             velocities.push_back({0,0});
             accelerations.push_back({});
+            forces.push_back({});
             colors.push_back({randNumR,randNumG,randNumB,alpha});
         }
         if(isClicking){
@@ -102,26 +105,31 @@ void physics(){
         for(int j = 0; j < masses.size() - isClicking; j++){
             if(i == j){
                 accelerations[i].push_back({0,0});
+                forces[i].push_back({0,0});
             }
             else{
                 float minDistance = masses[i] + masses[j];
-                float distance = vectorSize({positions[i].x - positions[j].x,positions[i].y - positions[j].y});
-                float a = G * masses[j]/pow(distance,2);
-                float forceDirectionSize;
                 Vector2 forceDirection = vectorSum(positions[j], vectorTime(positions[i], -1.0));
-                forceDirectionSize = vectorSize(forceDirection);
-                forceDirection = vectorTime(forceDirection, 1/forceDirectionSize);
+                float distance = vectorSize(forceDirection);
+                forceDirection = vectorTime(forceDirection, 1/distance);
+
+                float a,f = 0;
+                
                 if(distance <= minDistance){
-                    if(vectorDot(forceDirection, velocities[i]) > 0){
+                    if(vectorDot(forceDirection, velocities[i]) > 0){ // 물리적으로는 있을 수 없지만 연산 한계로 여러번 카운팅 우려.
                         Vector2 perpendicularVelocity = vectorTime(forceDirection, vectorDot(forceDirection, velocities[i]));
-                        accelerations[i].push_back(vectorTime(perpendicularVelocity, -2/dt));
-                        deltaVeocity =  vectorSum(deltaVeocity, vectorTime(perpendicularVelocity, -2));
+                        float dv = vectorSize(perpendicularVelocity)*(-2);
+                        a = dv/dt;
+                        f = masses[i] * a;
                     }
                 }
                 else{
-                    accelerations[i].push_back(vectorTime(forceDirection, a));
-                    deltaVeocity = vectorSum(deltaVeocity, vectorTime(forceDirection, a*dt));
+                    f = G * masses[j] * masses[i]/pow(distance,2);
+                    a = f/masses[i];
                 }
+                forces[i].push_back(vectorTime(forceDirection, f));
+                accelerations[i].push_back(vectorTime(forceDirection, a));
+                deltaVeocity =  vectorSum(deltaVeocity, vectorTime(forceDirection, a*dt));
             }
         }
         velocities[i] = vectorSum(velocities[i], deltaVeocity);
