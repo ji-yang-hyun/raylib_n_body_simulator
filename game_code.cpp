@@ -4,6 +4,9 @@
 #include <cstdlib>
 using namespace std;
 
+float realG = 6.6743 * pow(10,-11);
+
+
 float vectorSize(Vector2 v){
     return sqrt(pow(v.x,2) + pow(v.y,2));
 }
@@ -17,19 +20,43 @@ Vector2 vectorSum(Vector2 v1, Vector2 v2){
     return {v1.x + v2.x, v1.y + v2.y};
 }
 
-RenderTexture2D traceCanvas;
 float growSpeed = 100;
 float screenSpeed = 100;
-float dt, playTime = 0;
-float clickTime, clickStartTime, clickEndTime;
-int isClicking = 0;
-float realG = 6.6743 * pow(10,-11);
 float G = 50000;
 float accelerationVisualScale = 1.0;
 float circleSize = 30;
 unsigned char alpha = 177;
+float screenW = 1300;
+float screenH = 1000;
+
+float dt, playTime = 0;
+float clickTime, clickStartTime, clickEndTime;
+int isClicking = 0;
 bool isPlaying = false;
-Vector2 screenPos = {0,0};
+RenderTexture2D traceCanvas;
+RenderTexture2D mapCanvas;
+
+// 맵 설정
+Vector2 playerInitPosition = {400, 500};
+Vector2 playerInitVelocity = {0,0};
+float playerInitMass = 30;
+float playerInitSize = 30;
+Color playerInitColor = {0,0,255,alpha};
+
+struct Rect{
+    vector<Vector2> pointPositoins = {}; //ABCD순서. 노트에 있음
+    Color color;
+};
+
+vector<Vector2> goalPositionRect = {{0,0}, {0,100}, {100,100}, {100,0}};
+Color goalColor = {0,0,255,255};
+
+vector<Rect> map = {{goalPositionRect, goalColor}};
+
+void drawRect(Rect rect){
+    DrawTriangle(rect.pointPositoins[0],rect.pointPositoins[1],rect.pointPositoins[3],rect.color);
+    DrawTriangle(rect.pointPositoins[1],rect.pointPositoins[2],rect.pointPositoins[3],rect.color);
+}
 
 struct Ball{
     Vector2 position;
@@ -43,8 +70,11 @@ struct Ball{
     Color color;
 };
 
-vector<Ball> balls = {};
-
+vector<Ball> balls = {
+    {
+        playerInitPosition, playerInitVelocity, {{0,0}}, playerInitMass, false, playerInitSize, playerInitColor
+    }
+};
 
 void mouseLeft(){
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
@@ -59,7 +89,7 @@ void mouseLeft(){
 
             balls.push_back(
                 {
-                {newMassPos.x + screenPos.x, newMassPos.y + screenPos.y},
+                newMassPos,
                 {0,0},
                 {{0,0}},
                 0.0,
@@ -72,8 +102,8 @@ void mouseLeft(){
         if(isClicking){
             balls[balls.size() - 1].size += dt*growSpeed;
             balls[balls.size() - 1].mass += dt*growSpeed;
-            balls[balls.size() - 1].velocity.x = clickPoint.x + screenPos.x - balls[balls.size() - 1].position.x;
-            balls[balls.size() - 1].velocity.y = clickPoint.y + screenPos.y - balls[balls.size() - 1].position.y;
+            balls[balls.size() - 1].velocity.x = clickPoint.x - balls[balls.size() - 1].position.x;
+            balls[balls.size() - 1].velocity.y = clickPoint.y - balls[balls.size() - 1].position.y;
         }
     }
     if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT)){
@@ -95,7 +125,7 @@ void mouseRight(){
             clickStartTime = GetTime();
             balls.push_back(
                 {
-                {newMassPos.x + screenPos.x, newMassPos.y + screenPos.y},
+                newMassPos,
                 {0,0},
                 {{0,0}},
                 circleSize,
@@ -119,24 +149,6 @@ void mouseRight(){
 void keySpace(){
     if(IsKeyPressed(KEY_SPACE)){
         isPlaying = !isPlaying;
-    }
-}
-
-void moveScreen(){
-    if(IsKeyDown(KEY_W)){
-        screenPos.y -= screenSpeed*dt;
-    }
-
-    if(IsKeyDown(KEY_S)){
-        screenPos.y += screenSpeed*dt;
-    }
-
-    if(IsKeyDown(KEY_A)){
-        screenPos.x -= screenSpeed*dt;
-    }
-
-    if(IsKeyDown(KEY_D)){
-        screenPos.x += screenSpeed*dt;
     }
 }
 
@@ -166,7 +178,8 @@ void physics(){
                     if(vectorDot(forceDirection, balls[i].velocity) > 0){ 
                         Vector2 perpendicularVelocity = vectorTime(forceDirection, vectorDot(forceDirection, balls[i].velocity));
                         float dv = vectorSize(perpendicularVelocity)*(-2);
-                        f = balls[i].mass * dv / dt;
+                        f = balls[i].mass * dv / dt; 
+                        // 여기서 숫자가 너무 커졌다가 다시 작아지면서 오차 발생하는듯. 근데 구조성 유지하려면 쩔수임.
                     }
                 }
                 else{
@@ -191,37 +204,53 @@ void physics(){
 }
 
 void drawScreen(){
-    // BeginTextureMode(traceCanvas);
-    // for (int i = 0; i < masses.size(); i++){
-    //     Color traceColor = colors[i];
-    //     traceColor.a = 255;
-    //     DrawCircle(positions[i].x, positions[i].y, 1, traceColor);
-    // }
-    // EndTextureMode();
+    BeginTextureMode(traceCanvas);
+    for (Ball ball : balls){
+        Color traceColor = ball.color;
+        traceColor.a = 255;
+        DrawCircleV(ball.position, 1, traceColor);
+    }
+    EndTextureMode();
+    DrawTextureRec(traceCanvas.texture, {0, 0, screenW, -screenH}, {0,0}, WHITE);
+    DrawTextureRec(mapCanvas.texture, {0, 0, screenW, -screenH}, {0,0}, WHITE);
+
+    
     Vector2 drawPosition = {}; // 편의성을 위한 더미 버퍼 벡터
     BeginDrawing();
     ClearBackground(WHITE);
     for (Ball ball : balls){
-        drawPosition = vectorSum(ball.position, vectorTime(screenPos, -1));
         Color traceColor = ball.color;
         traceColor.a = 255;
-        DrawCircleV(drawPosition, ball.size, ball.color);
-        DrawLineEx(drawPosition, vectorSum(drawPosition, ball.velocity), 7.7, traceColor);
+        DrawCircleV(ball.position, ball.size, ball.color);
+        DrawLineEx(ball.position, vectorSum(ball.position, ball.velocity), 7.7, traceColor);
         for (int j = 0; j < ball.forces.size() - 1; j++){
-            DrawLineEx(drawPosition, vectorSum(drawPosition, vectorTime(ball.forces[j], 1/ball.mass)), 7.0, balls[j].color);
+            DrawLineEx(ball.position, vectorSum(ball.position, vectorTime(ball.forces[j], 1/ball.mass)), 7.0, balls[j].color);
         }
     }
-    // DrawTextureRec(traceCanvas.texture, {0, 0, 1300,-1000}, {0,0}, WHITE);
     EndDrawing();
+}
+
+void gameSystem(){
+
+}
+
+void drawMap(){
+    BeginTextureMode(mapCanvas);
+    for(Rect rect : map){
+        drawRect(rect);
+    }
+    EndTextureMode();
 }
 
 int main(){
 
     srand(2008);
 
-    InitWindow(1300,1000,"hello world");
+    InitWindow(screenW, screenH,"hello world");
     SetTargetFPS(120);
-    traceCanvas = LoadRenderTexture(1300, 1000);
+    traceCanvas = LoadRenderTexture(screenW, screenH);
+    mapCanvas = LoadRenderTexture(screenW, screenH);
+    drawMap();
 
     while(!WindowShouldClose()){
         dt = GetFrameTime();
@@ -230,7 +259,6 @@ int main(){
         mouseLeft();
         mouseRight();
         keySpace();
-        moveScreen();
 
         if(isPlaying){
             physics();
